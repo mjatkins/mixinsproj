@@ -1,12 +1,12 @@
 #lang racket
-
+(require rackunit)
 
 
 (define test-ct
   (make-hash
   `((Counter .  ;;key
-  (class (fields count) ((method increment self n)
-                          (λ (n) (+ (/ self count) n)))))))) ;;value
+  (class (fields count) ((method (increment self n))
+                          (+ (/ self count) n))))))) ;;value
 (define lookup-ct
   (λ  (c c-def)
     (hash-ref c-def c)))
@@ -17,7 +17,9 @@
       ( `(() . ,_) env)
       ( `(,_ . ()) env)
       ( `( (,x . ,xd) (,arg . ,ad))
-        (extend-env* (extend-env x arg) xd ad)))))
+        (extend-env* (extend-env x arg) xd ad))
+      ( `(,x . ,arg) (extend-env x arg)))))
+
                            
         
 (define lookup-field
@@ -35,14 +37,21 @@
   (λ (c g c-def)
     (match-let (( `(class ,_ (method . ,methods) ) (lookup-ct c c-def)))
       (findf (λ (m) (match-let ((`(method  (,g^ . ,_) ,_ ) m) )
-               (eqv? g g^)) methods)))))
+                      (eqv? g g^)) methods)))))
+
+
 (define apply-method
  (lambda (self m m-args)
-   (match-let (( `(method (,_ . ,formals) ,body) m))
-     m
-     ;;(value-of-exp e env c-def)
-     ;;TODO
-     )))
+   (match-letrec (( `(method (,_ . ,formals) ,body) m)
+     ;;TODO : Implement apply-method (apparentely will use mutual recursion)
+                  ( env^ (extend-env m-args formals)))
+     (value-of-exp body env^ empty-cdef))))
+     
+     
+     
+
+     
+     
 
 (define extend-env
   (λ (env x arg c-def) 
@@ -50,6 +59,8 @@
       (cond
         ((eqv? y x) arg)
         (else (env y))))))
+
+
 (define value-of-exp
   (λ (e env c-def)
     (match e
@@ -87,12 +98,13 @@
        ((value-of-exp rator env c-def) (value-of-exp rand env c-def))))))
 
 (define empty-env
-  (λ (y) (error 'value-of "unbound variable ~s" y)))
+  (λ (y) (error 'value-of-exp "unbound variable ~s" y)))
+(define empty-cdef
+  (λ (y) (error 'value-of-exp "no class ~s" y)))
 ;basic interpreter tests
-;(value-of-exp '(+ 1 2) empty-env test-ct)
-;(value-of-exp `((λ (x) x) 2) empty-env test-ct)
-;(value-of-exp `((λ (x) (if (zero? x) #t #f)) 0) empty-env test-ct)
+(check-eqv? (value-of-exp '(+ 1 2) empty-env test-ct) 3)
+(check-eqv? (value-of-exp `((λ (x) x) 2) empty-env test-ct) 2)
+(check-eqv? (value-of-exp `((λ (x) (if (zero? x) #t #f)) 0) empty-env test-ct) #t)
 ;field tests
-;(value-of-exp `(new Counter 5 4) empty-env test-ct)
-;(value-of-exp `(let ((c (new Counter 5))) (/ c count) ) empty-env test-ct)
-
+(check-eqv? (value-of-exp `(let ((c (new Counter 5))) (/ c count) ) empty-env test-ct) 5)
+(check-eqv? (value-of-exp `(let ((c (new Counter 5))) (send c increment 10)) empty-env test-ct) 15)
