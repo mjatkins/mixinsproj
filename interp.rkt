@@ -41,7 +41,7 @@
 (define lookup-method
   (λ (c g c-def)
     ;; class is defined as:
-    ;; (class (fields ...) ((method (g x ...) e ) ... ))
+    ;; (class-value (fields ...) ((method (g x ...) e ) ... ))
     (match-let (( `(class-value ,_ . (,methods)) (lookup-ct c c-def)))
       (findf (λ (m) (match-let (( `(method  (,g^ . ,_) ,body) m) )
                       (eqv? g g^))) methods))))
@@ -69,8 +69,8 @@
       (`(+ ,e1 ,e2)
        (+ (value-of-exp e1 env c-def)
           (value-of-exp e2 env c-def)))
-      (`(if (,pred ,e1) ,r1 ,r2)
-       (if (value-of-exp `(,pred ,e1) env c-def) (value-of-exp r1 env c-def) (value-of-exp r2 env c-def)))
+      (`(if ,e1 ,r1 ,r2)
+       (if (value-of-exp e1 env c-def) (value-of-exp r1 env c-def) (value-of-exp r2 env c-def)))
       (`(zero? ,x)
        (zero? (value-of-exp x env c-def)))
       (`(new ,c . ,args)
@@ -123,6 +123,7 @@
 (check-eqv? (value-of-exp `(let ((c (new Counter 5))) (send c increment 10)) empty-env test-ct) 15)
 (check-eqv? (value-of-exp `(let ((boston-terrier (new Dog 1 22))) (send boston-terrier bark1)) empty-env test-ct) 1)
 (check-eqv? (value-of-exp `(let ((boston-terrier (new Dog 1 22))) (send boston-terrier bark2)) empty-env test-ct) 22)
+(check-eqv? (value-of-exp `(if #t 1 2) empty-env (hash)) 1)
 
 (define test-prog-1
   `((class Dog
