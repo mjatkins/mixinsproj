@@ -11,6 +11,7 @@
 (hash-set! test-ct 'Counter `(class-value (fields count) ((method (increment self n)
                                  (+ (/ self count) n)))))
 
+
 (define lookup-ct
   (λ  (c c-def)
     (hash-ref c-def c)))
@@ -22,7 +23,7 @@
       ( `(,_ . ()) env)
       ( `( (,x . ,xd) (,arg . ,ad))
         (extend-env* (extend-env env x arg c-def) xd ad c-def))
-      ( `(,x . ,arg)
+      ( `((,x) . (,arg))
         (extend-env env x arg c-def)))))
 
                            
@@ -46,12 +47,18 @@
       (findf (λ (m) (match-let (( `(method  (,g^ . ,_) ,body) m) )
                       (eqv? g g^))) methods))))
 
+(define value-of-list
+  (λ (ls env c-def)
+    (cond
+      ((empty? ls) null)
+      ((not (list? ls)) (value-of-exp ls env c-def))
+      (else (cons (value-of-exp (car ls) env c-def) (value-of-list (cdr ls) env c-def))))))
 
 (define apply-method
- (lambda (self m m-args c-def)
-   (match-letrec (( `(method (,_ . ,formals) ,body) m)
-                  (env^ (extend-env*  empty-env formals `(,self . ,m-args) c-def)))
-       (value-of-exp body env^ c-def))))    
+  (lambda (self m m-args c-def)
+    (match-letrec (( `(method (,_ . ,formals) ,body) m)
+                   (env^ (extend-env*  empty-env formals `(,self . ,m-args) c-def)))
+      (value-of-exp body env^ c-def))))    
 
 (define extend-env
   (λ (env x arg c-def) 
@@ -62,12 +69,15 @@
 
 
 (define value-of-exp
-  (λ (e env c-def) 
+  (λ (e env c-def)
     (match e
       (`,n #:when (number? n) n)
       (`,b #:when (boolean? b) b)
       (`(+ ,e1 ,e2)
        (+ (value-of-exp e1 env c-def)
+          (value-of-exp e2 env c-def)))
+      (`(* ,e1 ,e2)
+       (* (value-of-exp e1 env c-def)
           (value-of-exp e2 env c-def)))
       (`(if ,e1 ,r1 ,r2)
        (if (value-of-exp e1 env c-def) (value-of-exp r1 env c-def) (value-of-exp r2 env c-def)))
@@ -77,25 +87,24 @@
        `(object ,c . ,args))
       (`(send ,e ,g . ,es)
        (match-let ([ (and `(object ,c . ,args) o)  (value-of-exp e env c-def)]
-                   [m-args (map (lambda (e)
-                                  (value-of-exp e env c-def)) es)])
+                   [m-args (value-of-list es env c-def)]) 
          (apply-method o (lookup-method c g c-def) m-args c-def)))             
       (`(/ ,e ,f) ;;in other notation, e.f
        (match-let ([`(object ,c . ,args)
                     (value-of-exp e env c-def)])
          (lookup-field c f args c-def)))
       (`,y #:when (symbol? y) (env y))
-      (`(λ (,x) ,body)
-       #:when (symbol? x)  
+      (`(λ ,x ,body)
        (λ (arg)
          (value-of-exp body
-                       (extend-env env x arg c-def)
+                       (extend-env* env x arg c-def)
                        c-def)))
       (`(let ((,x ,v)) ,body)
        (let ((val (value-of-exp v env c-def)))
          (value-of-exp body (extend-env env x val c-def) c-def)))
-      (`(,rator ,rand)
-       ((value-of-exp rator env c-def) (value-of-exp rand env c-def))))))
+      (`(,rator ,rands)
+       ((value-of-exp rator env c-def) (value-of-list rands env c-def)))
+      )))
 
 (define empty-env
   (λ (y) (error 'value-of-exp "unbound variable ~s" y)))
@@ -123,7 +132,10 @@
 (check-eqv? (value-of-exp `(let ((c (new Counter 5))) (send c increment 10)) empty-env test-ct) 15)
 (check-eqv? (value-of-exp `(let ((boston-terrier (new Dog 1 22))) (send boston-terrier bark1)) empty-env test-ct) 1)
 (check-eqv? (value-of-exp `(let ((boston-terrier (new Dog 1 22))) (send boston-terrier bark2)) empty-env test-ct) 22)
+;;misc. tests
 (check-eqv? (value-of-exp `(if #t 1 2) empty-env (hash)) 1)
+(check-eqv? (value-of-exp `((λ (x y) (+ x y)) (2 3)) empty-env test-ct) 5)
+(check-eqv? (value-of-exp `((λ (a b c d) (+ b (+ a (+ c d))) ) (2 3 4 5)) empty-env test-ct) 14)
 
 (define test-prog-1
   `((class Dog
@@ -135,5 +147,23 @@
     (let ((boston-terrier (new Dog 1 22)))
       (send boston-terrier bark2))))
 
-(value-of-prog test-prog-1 (hash))
+(define test-prog-2
+  `((class Rectangle
+      (fields x y)
+      ((method (area self) ;;get area of the square
+               (* (/ self x) (/ self y)))))
+    
+  (let ((myRectangle (new Rectangle 5 5)))
+    (send myRectangle area))))
 
+(define test-prog-3
+  `((class Adder
+      (fields n)
+      ((method (add-to-n self x y)
+               (+ (+ x y) (/ self n)))))
+    (let ((myAdder (new Adder 7)))
+      (send myAdder add-to-n 5 6))))
+
+(check-eqv? (value-of-prog test-prog-1 (hash)) 22)
+(check-eqv? (value-of-prog test-prog-2 (hash)) 25)
+(check-eqv? (value-of-prog test-prog-3 (hash)) 18)
