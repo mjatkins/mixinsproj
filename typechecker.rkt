@@ -1,6 +1,6 @@
 #lang racket
 (require rackunit)
-
+(provide all-defined-out)
 
 (define checker
   (λ (e env ct)
@@ -25,11 +25,11 @@
       (`(,rator ,rands) e))))
 
 
-(define check-type-eq?)
+(define check-type-eq?
 (λ (t1 t2 e)
   (cond
     ((type-eq? t1 t2) #t)
-    (else (error 'type-check "~a != ~a\nin ~v" t1 t2 e))))
+    (else (error 'type-check "~a != ~a\nin ~v" t1 t2 e)))))
 
 (define type-eq?
   (λ (t1 t2)

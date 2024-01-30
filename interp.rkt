@@ -6,16 +6,16 @@
     (hash-ref c-def c)))
 
 (define extend-env*
-  (λ (env xs args c-def)
+  (λ (env xs args )
     (match `(,xs . (,args))
       ( `(() . ,_) env)
       ( `(,_ . ()) env)
       ( `( (,x : ,t . ,xd) (,arg . ,ad))
-        (extend-env* (extend-env env x arg c-def) xd ad c-def))
+        (extend-env* (extend-env env x arg) xd ad ))
       (`((,x : ,t . ,r) . (,arg))
-       (extend-env env x arg c-def))
+       (extend-env env x arg))
       ( `((,x) . (,arg))
-        (extend-env env x arg c-def)))))
+        (extend-env env x arg)))))
 
                            
         
@@ -48,11 +48,11 @@
 (define apply-method
   (lambda (self m m-args c-def)
     (match-letrec (( `(method (,_ . ,formals) ,body) m)
-                   (env^ (extend-env*  empty-env formals `(,self . ,m-args) c-def)))
+                   (env^ (extend-env*  empty-env formals `(,self . ,m-args))))
       (value-of-exp body env^ c-def))))    
 
 (define extend-env
-  (λ (env x arg c-def) 
+  (λ (env x arg) 
     (λ (y)
       (cond
         ((eqv? y x) arg)
@@ -89,18 +89,22 @@
                     (value-of-exp e env c-def)])
          (lookup-field c f args c-def)))
       (`,y #:when (symbol? y) (env y))
-      (`(λ ,xs . (,body))
-       (λ (arg)
-         (value-of-exp body
-                       (extend-env* env xs arg c-def)
-                       c-def)))
+      (`(λ ,xs . (,body)) (make-clos body xs env c-def))
       (`(let ((,x ,v)) ,body)
        (let ((val (value-of-exp v env c-def)))
-         (value-of-exp body (extend-env env x val c-def) c-def)))
+         (value-of-exp body (extend-env env x val) c-def)))
       (`(,rator ,rands)
-       ((value-of-exp rator env c-def) (value-of-list rands env c-def)))
-      )))
+       (apply-clos
+        (value-of-exp rator env c-def) (value-of-list rands env c-def))))))
 
+(define make-clos
+  (λ (body xs env c-def)
+   `(make-clos ,body ,xs ,env ,c-def)))
+        
+(define apply-clos
+  (λ (clos rands)
+    (match clos
+      (`(make-clos ,body ,xs ,env ,c-def) (value-of-exp body (extend-env* env xs rands) c-def)))))
 (define empty-env
   (λ (y) (error 'value-of-exp "unbound variable ~s" y)))
 
