@@ -1,5 +1,6 @@
 #lang racket
 (require rackunit)
+(require "typechecker.rkt")
 
 (define lookup-ct
   (λ  (c c-def)
@@ -16,6 +17,7 @@
        (extend-env env x arg))
       ( `((,x) . (,arg))
         (extend-env env x arg)))))
+
 
                            
         
@@ -93,7 +95,7 @@
       (`(let ((,x ,v)) ,body)
        (let ((val (value-of-exp v env c-def)))
          (value-of-exp body (extend-env env x val) c-def)))
-      (`(,rator ,rands)
+      (`(,rator . ,rands)
        (apply-clos
         (value-of-exp rator env c-def) (value-of-list rands env c-def))))))
 
@@ -127,8 +129,8 @@
 (check-eqv? (value-of-exp `((λ (x : B) (if (zero? x) #t #f)) 0) empty-env '()) #t)
 ;;misc. tests
 (check-eqv? (value-of-exp `(if #t 1 2) empty-env (hash)) 1)
-(check-eqv? (value-of-exp `((λ (x : N y : N) (+ x y)) (2 3)) empty-env '()) 5)
-(check-eqv? (value-of-exp `((λ (a : N b : N c : N d : N) (+ b (+ a (+ c d))) ) (2 3 4 5)) empty-env '()) 14)
+(check-eqv? (value-of-exp `((λ (x : N y : N) (+ x y)) 2 3) empty-env '()) 5)
+(check-eqv? (value-of-exp `((λ (a : N b : N c : N d : N) (+ b (+ a (+ c d))) ) 2 3 4 5) empty-env '()) 14)
 
 (define test-prog-1
   `((class Dog
