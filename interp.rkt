@@ -7,21 +7,6 @@
   (λ  (c c-def)
     (hash-ref c-def c)))
 
-(define extend-env*
-  (λ (env xs args)
-    (match `(,xs . (,args))
-      ( `(() . ,_) env)
-      ( `(,_ . ()) env)
-      ( `((,x : ,t . ,xd) (,arg . ,ad))
-        (extend-env* (extend-env env x arg) xd ad ))
-      ( `((,x  . ,xd) (,arg . ,ad))
-        (extend-env* (extend-env env x arg) xd ad ))
-      (`((,x : ,t . ,r) . (,arg))
-       (extend-env env x arg))
-      ( `((,x) . (,arg))
-        (extend-env env x arg)))))
-
-        
 (define lookup-field
   (lambda (c f args c-def)
     (match-let (( `(class ,_ (fields . ,fs) ,_ ) (lookup-ct c c-def)))
@@ -42,18 +27,11 @@
       (else
        (cons (value-of-exp (car ls) env c-def) (value-of-list (cdr ls) env c-def))))))
 
-(define apply-method
+(define apply-method 
   (lambda (self m m-args c-def)
     (match-let* (( `(method (,_ . ,formals) : ,_ ,body) m)
                    (env^ (extend-env*  empty-env formals `(,self . ,m-args))))
-      (value-of-exp body env^ c-def))))    
-
-(define extend-env
-  (λ (env x arg) 
-    (λ (y)
-      (cond
-        ((eqv? y x) arg)
-        (else (env y))))))
+      (value-of-exp body env^ c-def))))
 
 
 (define value-of-exp
@@ -80,7 +58,7 @@
       (`(send ,e ,g . ,es)
        (match-let ([ (and `(object ,c . ,args) o)  (value-of-exp e env c-def)]
                    [m-args (value-of-list es env c-def)]) 
-         (apply-method o (lookup-method c g c-def) m-args c-def)))             
+         (apply-method o (lookup-method c g c-def) m-args c-def)))
       (`(/ ,e ,f) ;;in other notation, e.f
        (match-let ([`(object ,c . ,args)
                     (value-of-exp e env c-def)])
@@ -101,7 +79,7 @@
 (define make-clos
   (λ (body xs env c-def)
    `(make-clos ,body ,xs ,env ,c-def)))
-        
+
 (define apply-clos
   (λ (clos rands)
     (match clos

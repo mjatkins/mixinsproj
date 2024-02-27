@@ -60,7 +60,7 @@
                     (for ((m-t m-ts)
                           (e-t e-ts))
                       (check-type-eq? m-t e-t e))
-                    (values e (get-method-return-type te₁ g ct))))            
+                    (values e (get-method-return-type te₁ g ct))))
       (`(/ ,e₁ ,f)
        (let*-values (((e₁^ te₁) (checker e₁ env ct))
                                  ((c ) (lookup-ct te₁ ct))
@@ -72,11 +72,17 @@
                                           ((body^ tbody) (checker body env^ ct)))
                             (values e (append `(→ ) ts `(,tbody)))))
       (`,y #:when (symbol? y) (values e (env y)))
-      (`(let ((,x ,v) . ,r) ,body) ;;TODO: impement list for multiple let assiignments
-       (let*-values (( (x^ tx) (checker v env ct))
-                     ((env^ ) (extend-env env x tx))
-                     ((body^ tbody) (checker body env^ ct)))
-         (values e tbody)))
+      (`(let ,x-vs ,body) ;;TODO: FIX THIS 
+       (let ((xs '())
+             (t-xs '()))
+         (for ((x-v-ls x-vs))
+           (set! xs (cons (car x-v-ls) xs))
+           (set! t-xs   (cons (cadr (checker (cadr x-v-ls) env ct) t-xs)))
+         (let*-values (( (x^ tx) (check-list t-xs env ct))
+                       ((env^ ) (extend-env* env xs tx))
+                       ((body^ tbody) (checker body env^ ct)))
+           (printf "tbody: ~a~n" tbody)
+           (values e tbody)))))
       (`(,rator . ,rands)
        (let-values (((rator^ rator-ts) (checker rator env ct))
                     ((  rand-ts) (check-list rands env ct)))
@@ -107,7 +113,6 @@
       (if (or (eqv? (caddr vars) 'Self) (eqv? (caddr vars) cvar))
           (checker b (extend-types-env vars empty-env) ct)
           (error 'method-check "~s≠self~n" (caddr vars))))))
-      
 
 (define extend-types-env
   (λ (xs env)
@@ -136,12 +141,6 @@
       (`( (→ . ,ts1) . (→ . ,ts2)) (andmap type-eq? ts1 ts2))
       (else #f))))
 
-(define extend-env
-  (λ (env x arg) 
-    (λ (y)
-      (cond
-        ((eqv? y x) arg)
-        (else (env y))))))
 
 (define lookup-field
   (lambda (c c-def)

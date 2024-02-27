@@ -3,6 +3,8 @@
 (provide lookup-ct)
 (provide class-address)
 (provide class-rectangle)
+(provide extend-env)
+(provide extend-env*)
 (provide test-prog-1)
 (provide test-prog-2)
 (provide test-prog-3)
@@ -28,6 +30,27 @@
     (match-let (( `(class ,_ (fields . ,_) . (,methods)) (lookup-ct c c-def)))
       (findf (λ (m) (match-let (( `(method  (,g^ . ,_) : ,_ ,body) m) )
                       (eqv? g g^))) methods))))
+(define extend-env
+  (λ (env x arg) 
+    (λ (y)
+      (cond
+        ((eqv? y x) arg)
+        (else (env y))))))
+
+(define extend-env*
+  (λ (env xs args)
+    (match `(,xs . (,args))
+      ( `(() . ,_) env)
+      ( `(,_ . ()) env)
+      ( `((,x : ,t . ,xd) (,arg . ,ad))
+        (extend-env* (extend-env env x arg) xd ad ))
+      ( `((,x  . ,xd) (,arg . ,ad))
+        (extend-env* (extend-env env x arg) xd ad ))
+      (`((,x : ,t . ,r) . (,arg))
+       (extend-env env x arg))
+      ( `((,x) . (,arg))
+        (extend-env env x arg)))))
+
 
 (define lookup-ct
   (λ  (c c-def)
@@ -90,7 +113,7 @@
       (fields x : N y : N)
       ((method (area self : Rectangle) : N ;;get area of the square
                (* (/ self x) (/ self y)))))
-    
+
   (let ((myRectangle (new Rectangle 5 5)))
     (send myRectangle area))))
 
@@ -115,7 +138,7 @@
       (+ 6 (/ myAdder n)))))
 
 (define test-prog-6
-  `(,class-address ,class-rectangle
+  `(,class-address ,class-rectangle 
                    (let ((o1 (new Rectangle 5 6)))
                      (let ((o2 (new Adder 7)))
                        (+ (/ o1 x) (/ o2 n))))))
@@ -139,7 +162,7 @@
     (let ((myFact (new Fact 5)))
       (send myFact factorial)))) 
 
-;TODO: Add test cases to test all combinations, and to trigger every possible error
-;ideas: incorrect # of fields, unfound fields
-;;factorial class
+;TODO: Add test cases to test all combinations, and to trigger every possible error (try mutual recursion)
+
+
 
