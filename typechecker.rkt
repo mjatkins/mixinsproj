@@ -11,15 +11,18 @@
     (match p
       (`(,(and `(class ,n . ,r) c) . ,p^)
        (let ((ct^ (hash-set ct n c)))
-         (class-check n ct^)
          (prog-check p^ ct^)))
-      (`(,e) (checker e empty-env ct)))))
+      (`(,e)
+       (for ((c-s (hash-keys ct)))
+         (class-check c-s ct))
+       (checker e empty-env ct)))))
 
 (define checker
   (λ (e env ct)
     (match e
       (`,n #:when (number? n) (values e 'N))
       (`,b #:when (boolean? b) (values e 'B))
+      (`,s #:when (string? s) (values e 'String))
       (`(+ ,e1 ,e2) (let-values (((e1^ t1) (checker e1 env ct))
                                  ((e2^ t2) (checker e2 env ct)))
                       (check-type-eq? t1 'N e1)
@@ -92,7 +95,7 @@
   (λ (cvar m ct)
     (match-let ((`(method (,_ self : ,_ . ,vars) : ,_ ,_) (lookup-method cvar m ct)))
       (get-arg-ts vars))))
-
+ 
 (define get-method-return-type
   (λ (cvar m ct)
     (match-let ((`(method (,_ self : ,_ . ,_) : ,rt ,_)  (lookup-method cvar m ct)))
@@ -261,5 +264,8 @@
 (check-equal?  (let-values (( (e t) (prog-check test-prog-9 (hash)))) t) 'N)
 (check-exn
  exn:fail?(λ () (prog-check test-prog-10 (hash))))
+(check-equal?  (let-values (( (e t) (prog-check test-prog-11 (hash)))) t) 'B)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-12 (hash)))) t) 'B)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-13 (hash)))) t) 'N)
 
 

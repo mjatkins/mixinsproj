@@ -39,6 +39,7 @@
     (match e
       (`,n #:when (number? n) n)
       (`,b #:when (boolean? b) b)
+      (`,s #:when (string? s) s)
       (`(+ ,e1 ,e2)
        (+ (value-of-exp e1 env c-def)
           (value-of-exp e2 env c-def)))
@@ -120,3 +121,6 @@
 (check-eqv? (value-of-prog test-prog-6 (hash)) 12)
 (check-eqv? (value-of-prog test-prog-8 (hash)) #t)
 (check-eqv? (value-of-prog test-prog-9 (hash)) 120)
+;(check-eqv? (value-of-prog test-prog-11 (hash)) #t)
+;(check-eqv? (value-of-prog test-prog-12 (hash)) #f)
+(value-of-prog test-prog-13 (hash))

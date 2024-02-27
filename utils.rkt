@@ -1,24 +1,6 @@
 #lang racket
-(provide lookup-method)
-(provide lookup-ct)
-(provide class-address)
-(provide class-rectangle)
-(provide extend-env)
-(provide extend-env*)
-(provide test-prog-1)
-(provide test-prog-2)
-(provide test-prog-3)
-(provide test-prog-4)
-(provide test-prog-5)
-(provide test-prog-6)
-(provide test-prog-7)
-(provide test-prog-8)
-(provide test-prog-9)
-(provide test-prog-10)
-
-
-
-
+(provide lookup-method lookup-ct class-address class-rectangle extend-env extend-env* test-prog-1 test-prog-2 test-prog-3 test-prog-4
+         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13)
 
 
 ;;shared functions
@@ -56,10 +38,6 @@
   (λ  (c c-def)
     (hash-ref c-def c)))
 
-
-
-
-
 ;;class-definitions
 
 (define class-address
@@ -94,6 +72,20 @@
               (if (zero? (/ self n))
                   (/ self total)
               (send (new Fact (- (/ self n ) 1) (* (/ self n) (/ self total))) factorial))))))
+(define even-class
+  `(class Even
+     (fields x : N)
+     ((method (even? self : Even) : B
+              (if (zero? (/ self x))
+                  #t
+                  (send (new Odd (- 1 (/ self x))) even?))))))
+(define odd-class
+      `(class Odd
+         (fields x : N)
+         ((method (even? self : Odd) : B
+                  (if (zero? (/ self x))
+                      #f
+                      (send (new Even (- 1 (/ self x))) even?))))))
 
 
 ;;test programs
@@ -138,7 +130,7 @@
       (+ 6 (/ myAdder n)))))
 
 (define test-prog-6
-  `(,class-address ,class-rectangle 
+  `(,class-address ,class-rectangle
                    (let ((o1 (new Rectangle 5 6)))
                      (let ((o2 (new Adder 7)))
                        (+ (/ o1 x) (/ o2 n))))))
@@ -160,9 +152,22 @@
 (define test-prog-10 ;;this shouldn't work, as it doesn't supply enough args
   `(,class-fact
     (let ((myFact (new Fact 5)))
-      (send myFact factorial)))) 
+      (send myFact factorial))))
 
-;TODO: Add test cases to test all combinations, and to trigger every possible error (try mutual recursion)
+;;mutual recursion tests
+(define test-prog-11
+  `(,even-class ,odd-class
+    (let ((myNum (new Even 6)))
+      (send myNum even?))))
 
+(define test-prog-12
+  `(,even-class ,odd-class
+                (let ((myNum (new Even 7)))
+                  (send myNum even?))))
 
-
+;;multiple let vars test
+(define test-prog-13
+  `(,class-address
+    (let ((myAdder (new Adder 7))
+          (myAdder2 (new Adder 6)))
+      (+ (/ myAdder n) (/ myAdder n)))))
