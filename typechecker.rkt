@@ -77,12 +77,11 @@
              (t-xs '()))
          (for ((x-v-ls x-vs))
            (set! xs (cons (car x-v-ls) xs))
-           (set! t-xs   (cons (cadr (checker (cadr x-v-ls) env ct) t-xs)))
-         (let*-values (( (x^ tx) (check-list t-xs env ct))
-                       ((env^ ) (extend-env* env xs tx))
+           (let-values  (((x tx) (checker (cadr x-v-ls) env ct)))
+             (set! t-xs (cons tx t-xs))))
+         (let*-values (( (env^ ) (extend-env* env xs t-xs))
                        ((body^ tbody) (checker body env^ ct)))
-           (printf "tbody: ~a~n" tbody)
-           (values e tbody)))))
+           (values e tbody))))
       (`(,rator . ,rands)
        (let-values (((rator^ rator-ts) (checker rator env ct))
                     ((  rand-ts) (check-list rands env ct)))
@@ -146,7 +145,7 @@
   (lambda (c c-def)
     (match-let (( `(class ,_ (fields . ,fs) ,_ ) (lookup-ct c c-def)))
       (get-arg-ts fs))))
-
+ 
 (define get-arg
   (λ (args fs f)
     (cond
