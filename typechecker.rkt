@@ -75,7 +75,7 @@
                                           ((body^ tbody) (checker body env^ ct)))
                             (values e (append `(→ ) ts `(,tbody)))))
       (`,y #:when (symbol? y) (values e (env y)))
-      (`(let ,x-vs ,body) ;;TODO: FIX THIS 
+      (`(let ,x-vs ,body)
        (let ((xs '())
              (t-xs '()))
          (for ((x-v-ls x-vs))
@@ -267,5 +267,4 @@
 (check-equal?  (let-values (( (e t) (prog-check test-prog-11 (hash)))) t) 'B)
 (check-equal?  (let-values (( (e t) (prog-check test-prog-12 (hash)))) t) 'B)
 (check-equal?  (let-values (( (e t) (prog-check test-prog-13 (hash)))) t) 'N)
-
-
+(check-equal?  (let-values (( (e t) (prog-check test-prog-14 (hash)))) t) 'String)

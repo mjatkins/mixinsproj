@@ -1,6 +1,6 @@
 #lang racket
 (provide lookup-method lookup-ct class-address class-rectangle extend-env extend-env* test-prog-1 test-prog-2 test-prog-3 test-prog-4
-         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13)
+         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13 test-prog-14)
 
 
 ;;shared functions
@@ -78,15 +78,19 @@
      ((method (even? self : Even) : B
               (if (zero? (/ self x))
                   #t
-                  (send (new Odd (- 1 (/ self x))) even?))))))
+                  (send (new Odd (- (/ self x) 1)) even?))))))
 (define odd-class
       `(class Odd
          (fields x : N)
          ((method (even? self : Odd) : B
                   (if (zero? (/ self x))
                       #f
-                      (send (new Even (- 1 (/ self x))) even?))))))
-
+                      (send (new Even (- (/ self x) 1)) even?))))))
+(define city-class
+  `(class City
+     (fields name : String population : N)
+     ((method (increasePopulation self : City new-residents : N) : City
+      (new City (/ self name) (+ (/ self population) new-residents))))))
 
 ;;test programs
 
@@ -171,3 +175,8 @@
     (let ((myAdder (new Adder 7))
           (myAdder2 (new Adder 6)))
       (+ (/ myAdder n) (/ myAdder n)))))
+
+(define test-prog-14
+  `(,city-class
+    (let ((myCity (new City "foobar-town" 7)))
+      (/ myCity name))))

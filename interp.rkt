@@ -1,7 +1,7 @@
 #lang racket
 (require rackunit)
 (require "utils.rkt")
-;(require "typechecker.rkt")
+(require racket/trace)
 
 (define lookup-ct
   (λ  (c c-def)
@@ -121,6 +121,7 @@
 (check-eqv? (value-of-prog test-prog-6 (hash)) 12)
 (check-eqv? (value-of-prog test-prog-8 (hash)) #t)
 (check-eqv? (value-of-prog test-prog-9 (hash)) 120)
-;(check-eqv? (value-of-prog test-prog-11 (hash)) #t)
-;(check-eqv? (value-of-prog test-prog-12 (hash)) #f)
-(value-of-prog test-prog-13 (hash))
+(check-eqv? (value-of-prog test-prog-11 (hash)) #t)
+(check-eqv? (value-of-prog test-prog-12 (hash)) #f)
+(check-eqv? (value-of-prog test-prog-13 (hash)) 14)
+(check-eqv? (value-of-prog test-prog-14 (hash)) "foobar-town")
