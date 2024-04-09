@@ -7,15 +7,69 @@
 
 
 (define prog-check
-  (λ (p ct)
+  (λ (p t)
     (match p
+      (`(,(and `(mixin ,n . ,r) m-body) . ,p^)
+       (add-mixin! t n m-body)
+       (mixin-check n t)
+       (prog-check p^ t))
       (`(,(and `(class ,n . ,r) c) . ,p^)
-       (let ((ct^ (hash-set ct n c)))
-         (prog-check p^ ct^)))
+       (add-class! t n c)
+       (prog-check p^ t))
       (`(,e)
-       (for ((c-s (hash-keys ct)))
-         (class-check c-s ct))
-       (checker e empty-env ct)))))
+       (for ((c-s (hash-keys (global-table-classes t))))
+         (class-check c-s t))
+       (checker e empty-env t)))))
+
+(define class-check
+  (λ (c ct)
+    (match-let ((`(class ,cvar (fields . ,fs) (mix . ,mixes) ,methods) (get-class ct c)))
+      (duplicate-methods-check (get-method-names-list methods) c)
+      (duplicate-fields-check (get-fields-list fs) c)
+      (for ((m methods))
+        (method-check cvar m ct)))))
+
+;;TODO: some checks for mixins:
+;;DONE 1. Check that for all classes, there are no duplicate fields 
+;;DONE 2. Check no duplicate methods in classes
+;; 2.5: method-check uses class defintions for methods, and has no way at the moment to check just mixins. IDEA: specific helper function just for check method and check mixin.
+;; 3. Check mixins being mixed as well (mix-check)
+;; note that mixins are checked in linear order, as there can be no mutual recursion for mixins. 
+;; mixin-check should yield a list of new field and method names.
+;; mixin table should hold fields and methods. When merging self and mixin method and f names, we require it to not have dupes.
+;; 4. make sure the error for dupes outputs the naming clash.
+
+(define mixin-check
+  (λ (m ct)
+    (match-let ((`(mixin ,m-name (fields . ,fs) (mix . ,mixes) ,methods) (get-mixin ct m)))
+      (mixin-methods-check mixes m ct)
+      (mixin-fields-check mixes m ct)
+      (for ((method methods))
+        (method-check m-name method ct)))))
+
+(define method-check/mixins
+  (λ (mix-name m mixes t)
+    (match-let ((`(method (,mvar . ,vars) : ,mt ,body ) m))
+      (let ((env (extend-types-env vars empty-env)))
+      (if (or (eqv? (caddr vars) 'Self) (eqv? (caddr vars) mix-name))
+          (match body
+            (`(send ,e₁ ,g . ,es)
+             (let*-values (((e₁^ te₁) (checker e₁ env t))
+                    ((m-ts ) (m-type te₁ g t))
+                    ((e-ts ) (check-list es env t)))
+                    (for ((m-t m-ts)
+                          (e-t e-ts))
+                      (check-type-eq? m-t e-t mix-name))
+                    (values mix-name (get-method-return-type te₁ g t))))
+            (`(/ ,e₁ ,f)
+             (let*-values (((e₁^ te₁) (checker e₁ env t))
+                                 ((c ) (get-mixin t te₁))
+                                 ((fs ) (get-fs c))
+                                 ((t-f ) (get-f-type fs f)))
+               (values mix-name t-f)))
+            (else (checker body (extend-types-env vars empty-env) t)))
+          (error 'method-check/mixins "~s≠self~n" (caddr vars)))))))
+      
 
 (define checker
   (λ (e env ct)
@@ -49,9 +103,11 @@
                      (values e 'B)))
       (`(new ,c . ,args)
        (let* ((arg-ts  (check-list args env ct))
-              (f-ts (lookup-field c ct)))
-         (if (not (equal? (length arg-ts) (length f-ts)))
-             (error 'checker "not enough arguments in: ~a~n" e)
+              (f-ts (lookup-field c ct))
+              (ms-list (get-mixins-from-class c ct))
+              (total-fields-length (+ (length f-ts) (length (get-mixin-fields ms-list ct)))))
+         (if (not (equal? (length arg-ts) total-fields-length))
+             (error 'checker "# of args ≠ # of fields in: ~a~n" e)
          (for ((f-t f-ts)
                (arg-t arg-ts))
            (check-type-eq? arg-t f-t e)))
@@ -66,9 +122,11 @@
                     (values e (get-method-return-type te₁ g ct))))
       (`(/ ,e₁ ,f)
        (let*-values (((e₁^ te₁) (checker e₁ env ct))
-                                 ((c ) (lookup-ct te₁ ct))
-                                 ((fs ) (get-fs c))
-                                 ((t-f ) (get-f-type fs f)))
+                     ((c ) (if (class? ct te₁)
+                               (get-class ct te₁)
+                               (get-mixin ct te₁)))
+                     ((fs ) (get-all-fs te₁ ct))
+                     ((t-f ) (get-f-type fs f)))
                    (values e t-f)))
       (`(λ ,xs . (,body)) (let*-values (((env^ e^) (values (extend-types-env xs env) e))
                                           ((ts e^^) (values (get-arg-ts xs) e))
@@ -103,11 +161,50 @@
 
 
 
-(define class-check
-  (λ (c ct)
-    (match-let ((`(class ,cvar (fields . ,fs) ,methods) (lookup-ct c ct)))
-      (for ((m methods))
-        (method-check cvar m ct)))))
+
+
+(define duplicate-fields-check
+  (λ (fields c)
+    (match fields
+      (`() #f)
+      (`(,a . ,d) (if (occurs? a d)
+                      (error 'duplicate-field-check "duplicate field ~a in ~a~n" a c)          
+                  (duplicate-fields-check d c))))))
+(define mixin-methods-check
+  (λ (mix-list m t)
+    (let ([all-methods (get-method-names-list (get-mixin-methods (cons m mix-list) t))])
+      (duplicate-methods-check all-methods m))))
+
+
+(define mixin-fields-check
+  (λ (mix-list m t)
+    (let ([all-fields (get-fields-list (get-mixin-fields/types (cons m mix-list) t))])
+      (duplicate-fields-check all-fields m))))
+
+(define duplicate-methods-check
+  (λ (m-list c)
+    (match m-list
+      (`() #f)
+      (`(,a . ,d)
+       (if (occurs? a d)
+                      (error 'duplicate-methods-check "duplicate method ~a in ~a~n" a c)
+                      (duplicate-methods-check d c))))))
+
+(define get-method-names-list
+  (λ (ms)
+    (match ms
+      (`((method (,name self : ,_ . ,vars) : ,_ . ,body) . ,r)
+       (cons name (get-method-names-list r)))
+      (`() null))))
+
+(define get-fields-list
+  (λ (ms)
+    (match ms
+      (`(,f-name : ,_ . ,r)
+       (cons f-name (get-fields-list r)))
+      (`() null))))
+
+           
 
 (define method-check
   (λ (cvar m ct)
@@ -129,9 +226,6 @@
     ((type-eq? t1 t2) #t)
     (else (error 'type-check "~a ≠ ~a\nin ~v" t1 t2 e)))))
 
-(define lookup-ct
-  (λ  (c c-def)
-    (hash-ref c-def c)))
 
 (define type-eq?
   (λ (t1 t2)
@@ -145,8 +239,8 @@
 
 
 (define lookup-field
-  (lambda (c c-def)
-    (match-let (( `(class ,_ (fields . ,fs) ,_ ) (lookup-ct c c-def)))
+  (lambda (c t)
+    (match-let (( `(class ,_ (fields . ,fs) (mix . ,_) ,_ ) (get-class t c)))
       (get-arg-ts fs))))
  
 (define get-arg
@@ -190,8 +284,18 @@
       ((null? ls) null)
       ((null? (cdr ls)) null)
       (else (cons (car ls) (minus-last-elem (cdr ls)))))))
+
+
 (define empty-env
   (λ (y) (error 'value-of-exp "unbound variable ~s" y)))
+
+(define get-all-fs
+  (λ (c-name t)
+    (if (class? t c-name)
+        (append (get-fs (get-class t c-name)) (get-mixin-fields/types (get-mixins-from-class c-name t) t))
+        (get-mixin-fields/types `(,c-name) t))))
+
+
 
 
 
@@ -230,41 +334,54 @@
 
 (define class-address
   `(class Adder
-      (fields n : N)
-      ((method (add-to-n self : Adder x : N y : N) : N
-               (+ (+ x y) (/ self n))))))
+     (fields n : N)
+     (mix)
+     ((method (add-to-n self : Adder x : N y : N) : N
+              (+ (+ x y) (/ self n))))))
 
 
 (check-exn
  exn:fail?
  (λ ()
    (checker `(let ((x #t)) (zero? x)) empty-env '())))
-(check-equal? (let-values (( (e te) (prog-check `(,class-address (new Adder 2))  (hash))))
+(check-equal? (let-values (( (e te) (prog-check `(,class-address (new Adder 2))  (empty-global-table))))
                 te) 'Adder)
 (check-exn
  exn:fail?
  (λ ()
-   (prog-check `(,class-address (new Adder #f))  (hash))))
+   (prog-check `(,class-address (new Adder #f))  (empty-global-table))))
 
 (check-equal? (let-values (( (e te)
                              (prog-check`(,class-address
                                           (let ((myAdder (new Adder 7)))
-                                            (+ 6 (/ myAdder n)))) (hash)))) te)
+                                            (+ 6 (/ myAdder n)))) (empty-global-table)))) te)
               'N)
 
-(check-equal?  (let-values (( (e t) (prog-check test-prog-1 (hash)))) t) 'N)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-2 (hash)))) t) 'N)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-3 (hash)))) t) 'N)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-4 (hash)))) t) 'N)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-5 (hash)))) t) 'N)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-6 (hash)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-1 (empty-global-table)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-2 (empty-global-table)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-3 (empty-global-table)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-4 (empty-global-table)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-5 (empty-global-table)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-6 (empty-global-table)))) t) 'N)
 (check-exn
- exn:fail?(λ () (prog-check test-prog-7 (hash))))
-(check-equal?  (let-values (( (e t) (prog-check test-prog-8 (hash)))) t) 'B)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-9 (hash)))) t) 'N)
+ exn:fail?(λ () (prog-check test-prog-7 (empty-global-table))))
+(check-equal?  (let-values (( (e t) (prog-check test-prog-8 (empty-global-table)))) t) 'B)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-9 (empty-global-table)))) t) 'N)
 (check-exn
- exn:fail?(λ () (prog-check test-prog-10 (hash))))
-(check-equal?  (let-values (( (e t) (prog-check test-prog-11 (hash)))) t) 'B)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-12 (hash)))) t) 'B)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-13 (hash)))) t) 'N)
-(check-equal?  (let-values (( (e t) (prog-check test-prog-14 (hash)))) t) 'String)
+ exn:fail?(λ () (prog-check test-prog-10 (empty-global-table))))
+(check-equal?  (let-values (( (e t) (prog-check test-prog-11 (empty-global-table)))) t) 'B)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-12 (empty-global-table)))) t) 'B)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-13 (empty-global-table)))) t) 'N)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-14 (empty-global-table)))) t) 'String)
+(check-equal?  (let-values (( (e t) (prog-check test-prog-16 (empty-global-table)))) t) 'N)
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-17 (empty-global-table))))
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-18 (empty-global-table))))
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-19 (empty-global-table))))
+(check-equal?  (let-values (( (e t) (prog-check test-prog-20 (empty-global-table)))) t) 'N)
+
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-21 (empty-global-table))))
+

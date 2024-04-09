@@ -8,7 +8,7 @@
 (define lookup-field
   (lambda (c f args t)
     (match-let (( `(class ,_ (fields . ,fs) (mix . ,ms) ,_ ) (get-class t c)))
-      (let (( all_fields (append fs (get-mixin-fields ms t)))) ;;preserve ordering from mix cluase for appending to fs
+      (let (( all_fields (append fs (get-mixin-fields/types ms t)))) ;;preserve ordering from mix cluase for appending to fs
         (get-arg args all_fields f)))))
 
 (define get-arg
@@ -28,6 +28,7 @@
 
 (define apply-method 
   (lambda (self m m-args c-def)
+    
     (match-let* (( `(method (,_ . ,formals) : ,_ ,body) m)
                    (env^ (extend-env*  empty-env formals `(,self . ,m-args))))
       (value-of-exp body env^ c-def))))
@@ -39,19 +40,8 @@
       (`,n #:when (number? n) n)
       (`,b #:when (boolean? b) b)
       (`,s #:when (string? s) s)
-      (`(+ ,e1 ,e2)
-       (+ (value-of-exp e1 env t)
-          (value-of-exp e2 env t)))
-      (`(- ,e1 ,e2)
-       (- (value-of-exp e1 env t)
-          (value-of-exp e2 env t)))
-      (`(* ,e1 ,e2)
-       (* (value-of-exp e1 env t)
-          (value-of-exp e2 env t)))
       (`(if ,e1 ,r1 ,r2)
        (if (value-of-exp e1 env t) (value-of-exp r1 env t) (value-of-exp r2 env t)))
-      (`(zero? ,x)
-       (zero? (value-of-exp x env t)))
       (`(new ,c . ,args)
        (let ((val-args (value-of-list args env t)))
        `(object ,c . ,val-args)))
@@ -72,6 +62,11 @@
            (set! xs (cons (car x-v-ls) xs))
            (set! vals (cons (value-of-exp (cadr x-v-ls) env t) vals)))
          (value-of-exp body (extend-env* env xs vals) t)))
+      (`(,p ,x) #:when (hash-has-key? unary-primitives p)
+                ((hash-ref unary-primitives p) (value-of-exp x env t)))
+      (`(,p ,e1 ,e2) #:when (hash-has-key? binary-primitives p)
+                     ((hash-ref binary-primitives p) (value-of-exp e1 env t)
+                                                     (value-of-exp e2 env t)))
       (`(,rator . ,rands)
        (apply-clos
         (value-of-exp rator env t) (value-of-list rands env t))))))
@@ -130,4 +125,6 @@
 (check-eqv? (value-of-prog test-prog-14 (empty-global-table)) "foobar-town")
 (check-eqv?  (value-of-prog test-prog-15 (empty-global-table)) 1)
 (check-eqv?  (value-of-prog test-prog-16 (empty-global-table)) 3)
+(check-eqv? (value-of-prog test-prog-20 (empty-global-table)) 1)
+
 

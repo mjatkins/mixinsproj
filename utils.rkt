@@ -1,13 +1,24 @@
 #lang racket
 (provide lookup-method class-address class-rectangle extend-env extend-env* test-prog-1 test-prog-2 test-prog-3 test-prog-4
-         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13 test-prog-14 test-prog-15 test-prog-16
-         get-class add-class! get-mixin add-mixin!
-         empty-global-table get-mixin-fields get-mixin-methods)
+         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13 test-prog-14 test-prog-15 test-prog-16 test-prog-17 test-prog-18 test-prog-19 test-prog-20 test-prog-21
+         get-class add-class! get-mixin add-mixin! binary-primitives unary-primitives mixin? class?
+         empty-global-table get-mixin-fields get-mixin-methods global-table-classes get-mixins-from-class get-mixin-fields/types occurs? )
 
 
 ;;shared functions
 
 (struct global-table (classes mixins)#:transparent #:mutable)
+
+(define binary-primitives
+  (hash '+ +
+        '- -
+        '* *
+        '++ string-append
+        ))
+
+(define unary-primitives
+  (hash 'print print
+        'zero? zero?))
 
 (define get-class
   (λ  (table c-name)
@@ -21,11 +32,25 @@
   (λ  (table m-name)
     (hash-ref (global-table-mixins table) m-name)))
 
+(define mixin?
+  (λ  (table m-name)
+    (occurs? m-name  (hash-keys (global-table-mixins table)))))
+
+(define class?
+  (λ  (table c-name)
+    (occurs? c-name  (hash-keys (global-table-classes table)))))
 
 (define add-mixin!
    (λ (t m-name def)
      (set-global-table-mixins! t (hash-set (global-table-mixins t) m-name def))))
 
+
+(define get-mixins-from-class
+  (λ (c t)
+    (match-let ((`(class ,cvar (fields . ,fs) (mix . ,mixes) ,methods) (get-class t c)))
+      mixes)))
+    
+    
 (define empty-global-table
   (λ ()
     (global-table (hash) (hash))))
@@ -35,7 +60,7 @@
     ;; class is defined as:
     ;; (class-value (fields ...) ((method (g x ...) e ) ... ))
     (match-let (( `(class ,_ (fields . ,_) (mix . ,ms) . (,methods)) (get-class t c)))
-      (let ((all_methods  (append (get-mixin-methods ms t) methods))) ;;TODO: get methods from mixin list (ms-list is a list of the mixins)
+      (let ((all_methods  (append (get-mixin-methods ms t) methods))) 
       (findf (λ (m) (match-let (( `(method  (,g^ . ,_) : ,_ ,body) m))
                       (eqv? g g^))) all_methods)))))
 
@@ -52,16 +77,44 @@
       (`() null)
       (`(,m .,r) (append (get-mixin-field-list (get-mixin table m)) (get-mixin-fields r table))))))
 
+(define get-mixin-fields/types
+  (λ (ms-list table)
+    (match ms-list
+      (`() null)
+      (`(,m .,r) (append (get-mixin-field-list/types (get-mixin table m)) (get-mixin-fields/types r table))))))
+
 (define get-mixin-method-body
   (λ (m-def)
     (match m-def
-      (`(mixin ,m-name (fields . ,_) . (,method-decls)) method-decls))))
+      (`(mixin ,m-name (fields . ,_)  (mix . ,r) . (,method-decls)) method-decls))))
+
+(define get-mixin-method-name
+  (λ (m-def)
+    (match m-def
+      (`(mixin ,m-name (fields . ,_)  (mix . ,r) . (,method-decls)) method-decls))))
 
 
 (define get-mixin-field-list
   (λ (m-def)
     (match m-def
-      (`(mixin ,m-name (fields . ,field-list) . ,_) field-list))))
+      (`(mixin ,m-name (fields . ,field-list)  (mix . ,r) . ,_) (get-fields field-list)))))
+
+(define get-mixin-field-list/types
+  (λ (m-def)
+    (match m-def
+      (`(mixin ,m-name (fields . ,field-list)  (mix . ,r) . ,_) (get-fields/types field-list)))))
+
+(define get-fields
+  (λ (ls)
+    (match ls
+      (`(,f-name : ,t . ,r) (cons f-name (get-fields r)))
+      (`() null))))
+
+(define get-fields/types
+  (λ (ls)
+    (match ls
+      (`(,f-name : ,t . ,r) (append `(,f-name  : ,t)  (get-fields/types r)))
+      (`() null))))
 
 (define extend-env
   (λ (env x arg) 
@@ -84,7 +137,12 @@
       ( `((,x) . (,arg))
         (extend-env env x arg)))))
 
-
+(define occurs?
+  (λ (s ls)
+    (cond
+      ((empty? ls) #f)
+      ((eqv? (car ls) s) #t)
+      (else (occurs? s (cdr ls))))))
 
 ;;class-definitions
 
@@ -250,6 +308,7 @@
 (define test-prog-15
   `((mixin incrementable
         (fields n : N)
+      (mix)
       ((method (incr self : Self) : N
        (+ (/ self n) 1))))
     
@@ -266,11 +325,12 @@
 (define test-prog-16 ;;testing multiple methods and fields in mixins
   `((mixin incrementable
         (fields n : N x : N y : N)
-      ((method (incr self : Self) : N
+      (mix)
+      ((method (incr self : incrementable) : N
                (+ (/ self n) 1))
-       (method (incr-by-2 self : Self) : N
+       (method (incr-by-2 self : incrementable) : N
                (+ (/ self n) 2))
-       (method (incr-by-3 self : Self) : N
+       (method (incr-by-3 self : incrementable) : N
                (+ (/ self n) 3))))
     
     (class Dog
@@ -283,7 +343,69 @@
     (let ((boston-terrier (new Dog 1 22 0 1 2)))
       (send boston-terrier incr-by-3))))
 
+(define test-prog-17 
+  `((mixin incremen1able
+        (fields n : N)
+      (mix)
+      ((method (incr self : incremen1able) : N
+               (+ (/ self n) 1))))
+    (mixin incremen2able
+        (fields n : N)
+      (mix incremen1able)
+      ((method (incr self : incremen2able) : N
+               (+ (/ self n) 2))))
+    (mixin incremen3able
+        (fields n : N)
+      (mix incremen2able)
+      ((method (incr self : incremen3able) : N
+               (+ (/ self n) 3))))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incremen3able)
+       ((method (bark1 self : Dog) : N
+                (/ self sound1))
+        (method (bark2 self : Dog) : N
+                (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0)))
+      (send boston-terrier incr))))
 
+(define displayable-interface
+  `(interface displayable
+     (method (display) : String)))
+
+(define graduate-test
+  
+  `((mixin GraduateMixin
+        (displayable)
+      (fields degree : String)
+      ((method (graduate_display self : Self) : String
+               (++ (send self display)
+                   (/ self degree)))))
+
+    (mixin PersonMixin
+        (displayable)
+      (fields name : String)
+      ((method (person_display self : Self) : String
+               (++ (/ self name)
+                   (send self display)))))
+    (mixin DoctorMixin
+        (displayable)
+      (fields)
+      ((method (doctor_dispaly self : Self) : String
+               (++ "Dr. "
+                   (send self display)))))
+    (instance display GraduateMixin
+              (:= display graduate_display))
+    (class ResearchDoctor
+      (fields)
+      (mix GraduateMixin DoctorMixin PersonMixin ))))
+
+(define test-prog-18
+  `(class fieldClash
+     (fields x : N x : N x : N)))
+(define test-prog-19
+  `(,class-with-no-mix)) ;;don't need a body, shouldn't get to that point.
 
 
 ;; errors from carbon tests:
@@ -307,3 +429,50 @@
 ;;while class decls. are now:
 ;;(class c-name (fields f₁...) (mix mix-names) ((methods n self a₁) : aₙ₊₁ m-body))
 
+(define test-prog-20 ;;field access for mixins
+  `((mixin incrementable
+        (fields n : N x : N y : N)
+      (mix)
+      ((method (incr self : incrementable) : N
+               (+ (/ self n) 1))
+       (method (incr-by-2 self : incrementable) : N
+               (+ (/ self n) 2))
+       (method (incr-by-3 self : incrementable) : N
+               (+ (/ self n) 3))))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incrementable)
+       ((method (bark1 self : Dog) : N
+                (/ self sound1))
+        (method (bark2 self : Dog) : N
+                (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0 1 2)))
+      (/ boston-terrier x))))
+
+(define test-prog-21 ; multiple mix test
+  `((mixin incremen1able
+        (fields n : N)
+      (mix)
+      ((method (incr self : incremen1able) : N
+               (+ (/ self n) 1))))
+    (mixin incremen2able
+        (fields n : N)
+      (mix incremen1able)
+      ((method (incr self : incremen2able) : N
+               (+ (/ self n) 2))))
+    (mixin incremen3able
+        (fields n : N)
+      (mix incremen2able)
+      ((method (incr self : incremen3able) : N
+               (+ (/ self n) 3))))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incremen2able)
+      ((method (bark1 self : Dog) : N
+               (/ self sound1))
+       (method (bark2 self : Dog) : N
+               (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0)))
+      (send boston-terrier incr))))
