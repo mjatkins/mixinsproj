@@ -2,6 +2,7 @@
 (require rackunit)
 (require "utils.rkt")
 (require racket/trace)
+(provide value-of-prog empty-global-table)
 
 
 

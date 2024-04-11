@@ -1,0 +1,8 @@
+(class Rectangle
+      (fields x : N y : N)
+      (mix)
+      ((method (area self : Rectangle) : N ;;get area of the square
+               (* (/ self x) (/ self y)))))
+
+  (let ((myRectangle (new Rectangle 5 5)))
+    (send myRectangle area))

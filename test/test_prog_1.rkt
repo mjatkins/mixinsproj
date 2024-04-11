@@ -1,0 +1,9 @@
+(class Dog
+      (fields sound1 : N sound2 : N)
+      (mix)
+       ((method (bark1 self : Dog) : N
+                (/ self sound1))
+        (method (bark2 self : Dog) : N
+                (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22)))
+      (send boston-terrier bark2))

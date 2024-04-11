@@ -1,6 +1,6 @@
 #lang racket
 (provide lookup-method class-address class-rectangle extend-env extend-env* test-prog-1 test-prog-2 test-prog-3 test-prog-4
-         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13 test-prog-14 test-prog-15 test-prog-16 test-prog-17 test-prog-18 test-prog-19 test-prog-20 test-prog-21
+         test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13 test-prog-14 test-prog-15 test-prog-16 test-prog-17 test-prog-18 test-prog-19 test-prog-20 test-prog-21 test-prog-22 test-prog-23 test-prog-24 test-prog-25 test-prog-26 test-prog-27 test-prog-28 test-prog-29
          get-class add-class! get-mixin add-mixin! binary-primitives unary-primitives mixin? class?
          empty-global-table get-mixin-fields get-mixin-methods global-table-classes get-mixins-from-class get-mixin-fields/types occurs? )
 
@@ -68,7 +68,8 @@
   (λ (ms-list table)
     (match ms-list
       (`() null)
-      (`(,m .,r) (append (get-mixin-method-body (get-mixin table m)) (get-mixin-methods r table))))))
+      (`(,m .,r) (unless (hash-has-key? (global-table-mixins table) m) (error 'mixin-check "undeclared mixin ~a~n" m))
+                 (append (get-mixin-method-body (get-mixin table m)) (get-mixin-methods r table))))))
 
 
 (define get-mixin-fields
@@ -404,6 +405,7 @@
 (define test-prog-18
   `(class fieldClash
      (fields x : N x : N x : N)))
+
 (define test-prog-19
   `(,class-with-no-mix)) ;;don't need a body, shouldn't get to that point.
 
@@ -450,7 +452,34 @@
     (let ((boston-terrier (new Dog 1 22 0 1 2)))
       (/ boston-terrier x))))
 
-(define test-prog-21 ; multiple mix test
+(define test-prog-21 ; mixing multiple times test
+  `((mixin incremen1able
+        (fields n : N)
+      (mix)
+      ((method (incr1 self : incremen1able) : N
+               (+ (/ self n) 1))))
+    (mixin incremen2able
+        (fields n : N)
+      (mix incremen1able)
+      ((method (incr2 self : incremen2able) : N
+               (+ (/ self n) 2))))
+    (mixin incremen3able
+        (fields n : N)
+      (mix incremen2able)
+      ((method (incr3 self : incremen3able) : N
+               (+ (/ self n) 3))))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incremen2able)
+      ((method (bark1 self : Dog) : N
+               (/ self sound1))
+       (method (bark2 self : Dog) : N
+               (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0)))
+      (send boston-terrier incr))))
+
+(define test-prog-22 ;incr name-clash test
   `((mixin incremen1able
         (fields n : N)
       (mix)
@@ -469,10 +498,132 @@
     
     (class Dog
       (fields sound1 : N sound2 : N)
-      (mix incremen2able)
+      (mix incremen3able)
       ((method (bark1 self : Dog) : N
                (/ self sound1))
        (method (bark2 self : Dog) : N
                (/ self sound2))))
     (let ((boston-terrier (new Dog 1 22 0)))
       (send boston-terrier incr))))
+
+(define test-prog-23
+  `((mixin incrementable
+        (fields n : N)
+      (mix)
+      ((method (incr self : Self) : N
+       (+ (/ self n) 1))))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incrementable)
+       ((method (bark1 self : Dog) : N
+                (/ self sound1))
+        (method (bark1 self : Dog) : N
+                (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0)))
+      (send boston-terrier incr))))
+
+(define test-prog-24
+  `((mixin incrementable
+        (fields n : N)
+      (mix)
+      ((method (incr self : Self) : N
+               (+ (/ self n) 1))
+       (method (incr self : Self) : N
+               (+ (/ self n) 1)
+               )))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incrementable)
+       ((method (bark1 self : Dog) : N
+                (/ self sound1))
+        (method (bark2 self : Dog) : N
+                (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0)))
+      (send boston-terrier incr))))
+
+(define test-prog-25 ;;mixing the same mixin twice
+  `((mixin incrementable
+        (fields n : N x : N y : N)
+      (mix)
+      ((method (incr self : incrementable) : N
+               (+ (/ self n) 1))
+       (method (incr-by-2 self : incrementable) : N
+               (+ (/ self n) 2))
+       (method (incr-by-3 self : incrementable) : N
+               (+ (/ self n) 3))))
+    
+    (class Dog
+      (fields sound1 : N sound2 : N)
+      (mix incrementable incrementable)
+       ((method (bark1 self : Dog) : N
+                (/ self sound1))
+        (method (bark2 self : Dog) : N
+                (/ self sound2))))
+    (let ((boston-terrier (new Dog 1 22 0 1 2)))
+      (/ boston-terrier x))))
+
+(define test-prog-26
+  `((mixin m1
+        (fields f1 : N)
+      (mix m2)
+      ())
+    (mixin m2
+        (fields f2 : N)
+      (mix m1
+           ()))
+    (+ 1 2)))
+
+;;TODO : add more specific errors in typechecker functions, showing specific reasons why they have been caused, such as in dupe methods and fields
+
+;;TODO: implement versions of all mixin tests from carbon-lang
+
+(define test-prog-27
+  `((mixin m1
+        (fields f1 : N)
+      (mix)
+      ())
+    (mixin m2
+        (fields f2 : N)
+      (mix m1)
+           ())
+  (class c1
+    (fields f1 : N)
+    (mix m1)
+    ())
+  (+ 1 2)))
+
+
+(define test-prog-28 ;rename test
+  `((mixin incremen1able
+        (fields n : N)
+      (mix)
+      ((method (incr self : incremen1able) : N
+               (+ (/ self n) 1))))
+    (mixin incremen2able
+        (fields n : N)
+      (mix incremen1able )
+      ((method (incr self : incremen2able) : N
+               (+ (/ self n) 2))))
+    (+ 1 2)))
+
+(define test-prog-29
+  `((mixin m1
+        (fields f1 : N)
+      (mix)
+      ())
+    (mixin m2
+        (fields f2 : N)
+      (mix m1)
+      ())
+    (mixin m3
+        (fields f3 : N)
+      (mix m1)
+      ())
+  (class c1
+    (fields)
+    (mix m2 m3)
+    ())
+  (+ 1 2)))
+

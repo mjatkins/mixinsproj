@@ -2,8 +2,13 @@
 
 (require rackunit)
 (require "utils.rkt")
-(provide all-defined-out)
+(provide prog-check)
 (require racket/trace)
+
+;;(mix mix-cluase ...)
+;;mix-clause ::= mix-name | (rename mix-name (rename-pairs ...))
+;;rename-pairs ::= (f-name f-name) | (m-name m-name)
+;;where the first _-name is the old, and the second the new
 
 
 (define prog-check
@@ -29,47 +34,15 @@
       (for ((m methods))
         (method-check cvar m ct)))))
 
-;;TODO: some checks for mixins:
-;;DONE 1. Check that for all classes, there are no duplicate fields 
-;;DONE 2. Check no duplicate methods in classes
-;; 2.5: method-check uses class defintions for methods, and has no way at the moment to check just mixins. IDEA: specific helper function just for check method and check mixin.
-;; 3. Check mixins being mixed as well (mix-check)
-;; note that mixins are checked in linear order, as there can be no mutual recursion for mixins. 
-;; mixin-check should yield a list of new field and method names.
-;; mixin table should hold fields and methods. When merging self and mixin method and f names, we require it to not have dupes.
-;; 4. make sure the error for dupes outputs the naming clash.
 
 (define mixin-check
   (λ (m ct)
     (match-let ((`(mixin ,m-name (fields . ,fs) (mix . ,mixes) ,methods) (get-mixin ct m)))
-      (mixin-methods-check mixes m ct)
+      (mixin-methods-check mixes m ct m-name)
       (mixin-fields-check mixes m ct)
       (for ((method methods))
         (method-check m-name method ct)))))
 
-(define method-check/mixins
-  (λ (mix-name m mixes t)
-    (match-let ((`(method (,mvar . ,vars) : ,mt ,body ) m))
-      (let ((env (extend-types-env vars empty-env)))
-      (if (or (eqv? (caddr vars) 'Self) (eqv? (caddr vars) mix-name))
-          (match body
-            (`(send ,e₁ ,g . ,es)
-             (let*-values (((e₁^ te₁) (checker e₁ env t))
-                    ((m-ts ) (m-type te₁ g t))
-                    ((e-ts ) (check-list es env t)))
-                    (for ((m-t m-ts)
-                          (e-t e-ts))
-                      (check-type-eq? m-t e-t mix-name))
-                    (values mix-name (get-method-return-type te₁ g t))))
-            (`(/ ,e₁ ,f)
-             (let*-values (((e₁^ te₁) (checker e₁ env t))
-                                 ((c ) (get-mixin t te₁))
-                                 ((fs ) (get-fs c))
-                                 ((t-f ) (get-f-type fs f)))
-               (values mix-name t-f)))
-            (else (checker body (extend-types-env vars empty-env) t)))
-          (error 'method-check/mixins "~s≠self~n" (caddr vars)))))))
-      
 
 (define checker
   (λ (e env ct)
@@ -161,7 +134,14 @@
 
 
 
-
+(define duplicate-method-in-same
+  (λ (ms m t c-name)
+    ((match ms
+      (`() #f)
+      (`(,a . ,d)
+       (if (occurs? a d)
+                      (error 'duplicate-methods-check "method ~a has previoulsy been defined in ~a~n" a c-name)
+                      (duplicate-method-in-same d m t c-name)))))))
 
 (define duplicate-fields-check
   (λ (fields c)
@@ -171,7 +151,8 @@
                       (error 'duplicate-field-check "duplicate field ~a in ~a~n" a c)          
                   (duplicate-fields-check d c))))))
 (define mixin-methods-check
-  (λ (mix-list m t)
+  (λ (mix-list m t m-name)
+    (duplicate-method-in-same (get-mixin-methods `(,m-name) t) m t m-name)
     (let ([all-methods (get-method-names-list (get-mixin-methods (cons m mix-list) t))])
       (duplicate-methods-check all-methods m))))
 
@@ -187,7 +168,7 @@
       (`() #f)
       (`(,a . ,d)
        (if (occurs? a d)
-                      (error 'duplicate-methods-check "duplicate method ~a in ~a~n" a c)
+                      (error 'duplicate-methods-check "method ~a defined in another mixin while checking ~a~n" a c)
                       (duplicate-methods-check d c))))))
 
 (define get-method-names-list
@@ -369,19 +350,42 @@
 (check-equal?  (let-values (( (e t) (prog-check test-prog-9 (empty-global-table)))) t) 'N)
 (check-exn
  exn:fail?(λ () (prog-check test-prog-10 (empty-global-table))))
+
+;;basic function tests
 (check-equal?  (let-values (( (e t) (prog-check test-prog-11 (empty-global-table)))) t) 'B)
 (check-equal?  (let-values (( (e t) (prog-check test-prog-12 (empty-global-table)))) t) 'B)
 (check-equal?  (let-values (( (e t) (prog-check test-prog-13 (empty-global-table)))) t) 'N)
 (check-equal?  (let-values (( (e t) (prog-check test-prog-14 (empty-global-table)))) t) 'String)
 (check-equal?  (let-values (( (e t) (prog-check test-prog-16 (empty-global-table)))) t) 'N)
 (check-exn
- exn:fail?(λ () (prog-check test-prog-17 (empty-global-table))))
+ exn:fail?(λ () (prog-check test-prog-17 (empty-global-table)))) ;;naming conflict in different mixins test
 (check-exn
- exn:fail?(λ () (prog-check test-prog-18 (empty-global-table))))
+ exn:fail?(λ () (prog-check test-prog-18 (empty-global-table)))) ;;field clash test
 (check-exn
- exn:fail?(λ () (prog-check test-prog-19 (empty-global-table))))
-(check-equal?  (let-values (( (e t) (prog-check test-prog-20 (empty-global-table)))) t) 'N)
+ exn:fail?(λ () (prog-check test-prog-19 (empty-global-table)))) ;;no mix test
+
+(check-equal?  (let-values (( (e t) (prog-check test-prog-20 (empty-global-table)))) t) 'N) ;;basic mixin test
 
 (check-exn
- exn:fail?(λ () (prog-check test-prog-21 (empty-global-table))))
+ exn:fail?(λ () (prog-check test-prog-21 (empty-global-table)))) ;;repeat mix test
 
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-22 (empty-global-table)))) ;;name conflict test
+
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-23 (empty-global-table)))) ;;method name conflict test (class)
+
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-24 (empty-global-table)))) ;;method name conflict test (mixin)
+
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-25 (empty-global-table)))) ;;miixng same mixin twice test
+
+(check-exn
+ exn:fail?(λ () (prog-check test-prog-26 (empty-global-table)))) ;;mixing same mixin twice test
+
+;(prog-check test-prog-27 (empty-global-table)) ;;name clash between calsss and mixin
+;;TODO :this should be an error
+;(prog-check test-prog-28 (empty-global-table))
+
+(prog-check test-prog-29 (empty-global-table))
