@@ -11,6 +11,7 @@
 ;;where the first _-name is the old, and the second the new
 
 
+
 (define prog-check
   (λ (p t)
     (match p
@@ -29,19 +30,24 @@
 (define class-check
   (λ (c ct)
     (match-let ((`(class ,cvar (fields . ,fs) (mix . ,mixes) ,methods) (get-class ct c)))
-      (duplicate-methods-check (get-method-names-list methods) c)
-      (duplicate-fields-check (get-fields-list fs) c)
-      (for ((m methods))
-        (method-check cvar m ct)))))
+      (let ([all-methods (append (get-method-names-list methods) (get-mixin-methods mixes ct))]
+            [all-fields (append (get-fields-list fs) (get-mixin-fields mixes ct c))])
+        (duplicate-methods-check all-methods c cvar)
+        (duplicate-fields-check all-fields c cvar)
+        (for ((m methods))
+          (method-check cvar m ct))))))
 
 
 (define mixin-check
   (λ (m ct)
     (match-let ((`(mixin ,m-name (fields . ,fs) (mix . ,mixes) ,methods) (get-mixin ct m)))
+      (when (occurs? m-name mixes)
+          (error 'mixin-check "~a cannot mix itself" m-name))
       (mixin-methods-check mixes m ct m-name)
-      (mixin-fields-check mixes m ct)
+      (mixin-fields-check mixes m ct m-name)
       (for ((method methods))
         (method-check m-name method ct)))))
+
 
 
 (define checker
@@ -65,6 +71,11 @@
                       (check-type-eq? t1 'N e1)
                       (check-type-eq? t2 'N e2) 
                       (values e 'N)))
+      (`(++ ,e1 ,e2) (let-values (((e1^ t1) (checker e1 env ct))
+                                 ((e2^ t2) (checker e2 env ct)))
+                      (check-type-eq? t1 'String e1)
+                      (check-type-eq? t2 'String e2) 
+                      (values e 'String)))  
       (`(if ,e1 ,r1 ,r2) (let-values (((e1^ te1) (checker e1 env ct))
                                       ((r1^ tr1) (checker r1 env ct))
                                       ((r2^ tr2) (checker r2 env ct)))
@@ -74,11 +85,14 @@
       (`(zero? ,x) (let-values (( (x^ tx) (checker x env ct)))
                      (check-type-eq? tx 'N x)
                      (values e 'B)))
+      (`(String->N ,x) (let-values (( (x^ tx) (checker x env ct)))
+                     (check-type-eq? tx 'String x)
+                     (values e 'N)))
       (`(new ,c . ,args)
        (let* ((arg-ts  (check-list args env ct))
               (f-ts (lookup-field c ct))
               (ms-list (get-mixins-from-class c ct))
-              (total-fields-length (+ (length f-ts) (length (get-mixin-fields ms-list ct)))))
+              (total-fields-length (+ (length f-ts) (length (get-mixin-fields ms-list ct c)))))
          (if (not (equal? (length arg-ts) total-fields-length))
              (error 'checker "# of args ≠ # of fields in: ~a~n" e)
          (for ((f-t f-ts)
@@ -136,40 +150,50 @@
 
 (define duplicate-method-in-same
   (λ (ms m t c-name)
-    ((match ms
+    (match ms
       (`() #f)
       (`(,a . ,d)
        (if (occurs? a d)
-                      (error 'duplicate-methods-check "method ~a has previoulsy been defined in ~a~n" a c-name)
-                      (duplicate-method-in-same d m t c-name)))))))
+           (error 'duplicate-method-in-same "method ~a has previoulsy been defined in ~a~n" a c-name)
+           (duplicate-method-in-same d m t c-name))))))
 
 (define duplicate-fields-check
-  (λ (fields c)
+  (λ (fields c c-name)
     (match fields
       (`() #f)
       (`(,a . ,d) (if (occurs? a d)
-                      (error 'duplicate-field-check "duplicate field ~a in ~a~n" a c)          
-                  (duplicate-fields-check d c))))))
+                      (error 'duplicate-fields-check "duplicate field ~a in ~a~n" a c)          
+                      (duplicate-fields-check d c c-name))))))
+
+(define duplicate-fields-in-same
+  (λ (fields m ct c-name)
+    (match fields
+      (`() #f)
+      (`(,a . ,d) (if (occurs? a d)
+                      (error 'duplicate-fields-in-same "field ~a has been previously defined in ~a~n" a c-name)          
+                      (duplicate-fields-in-same d m ct c-name))))))
+
 (define mixin-methods-check
   (λ (mix-list m t m-name)
     (duplicate-method-in-same (get-mixin-methods `(,m-name) t) m t m-name)
-    (let ([all-methods (get-method-names-list (get-mixin-methods (cons m mix-list) t))])
-      (duplicate-methods-check all-methods m))))
+    (let ([all-methods (get-method-names-list (get-mixin-methods (cons m null) t))])
+      (duplicate-methods-check all-methods m m-name))))
 
 
 (define mixin-fields-check
-  (λ (mix-list m t)
-    (let ([all-fields (get-fields-list (get-mixin-fields/types (cons m mix-list) t))])
-      (duplicate-fields-check all-fields m))))
+  (λ (mix-list m t m-name)
+    (duplicate-fields-in-same (get-mixin-fields `(,m-name) t m-name) m t m-name)
+    (let ([all-fields (get-fields-list (get-mixin-fields/types (cons m null) t))])
+      (duplicate-fields-check all-fields m m-name))))
 
 (define duplicate-methods-check
-  (λ (m-list c)
+  (λ (m-list c c-name)
     (match m-list
       (`() #f)
       (`(,a . ,d)
        (if (occurs? a d)
-                      (error 'duplicate-methods-check "method ~a defined in another mixin while checking ~a~n" a c)
-                      (duplicate-methods-check d c))))))
+                      (error 'duplicate-methods-check "method ~a defined in another mixin while checking ~a~n" a c-name)
+                      (duplicate-methods-check d c c-name))))))
 
 (define get-method-names-list
   (λ (ms)
@@ -185,13 +209,22 @@
        (cons f-name (get-fields-list r)))
       (`() null))))
 
-           
+
+(define check-dupe-args
+  (λ (args c-name)
+    (match args
+      (`() #f)
+      (`(,a : ,_ . ,d) (if (occurs/type? a d) 
+                      (error 'duplicate-argument "argument ~a has been previously defined in ~a~n" a c-name)          
+                      (check-dupe-args d c-name))))))
 
 (define method-check
   (λ (cvar m ct)
     (match-let ((`(method (,mvar . ,vars) : ,mt ,b ) m))
       (if (or (eqv? (caddr vars) 'Self) (eqv? (caddr vars) cvar))
-          (checker b (extend-types-env vars empty-env) ct)
+          (begin
+            (check-dupe-args vars cvar)
+            (checker b (extend-types-env vars empty-env) ct))
           (error 'method-check "~s≠self~n" (caddr vars))))))
 
 (define extend-types-env
@@ -384,8 +417,13 @@
 (check-exn
  exn:fail?(λ () (prog-check test-prog-26 (empty-global-table)))) ;;mixing same mixin twice test
 
-;(prog-check test-prog-27 (empty-global-table)) ;;name clash between calsss and mixin
-;;TODO :this should be an error
-;(prog-check test-prog-28 (empty-global-table))
+(check-exn
+ exn:fail? (λ ()  (prog-check test-prog-27 (empty-global-table)))) ;;name clash between calsss and mixin
 
-(prog-check test-prog-29 (empty-global-table))
+(check-exn
+ exn:fail? (λ () (prog-check test-prog-28 (empty-global-table))))
+
+(check-exn
+ exn:fail? (λ () (prog-check test-prog-29 (empty-global-table))))
+
+

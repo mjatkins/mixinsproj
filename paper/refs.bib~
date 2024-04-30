@@ -1,0 +1,14 @@
+@article{ bracha1990,
+author = {Gilad Bracha and William Cook},
+year = {1990},
+title = {Mixin-based Inheritance},
+journal = {ACM},
+},
+
+@article{ bono1999,
+author = {Viviana Bono and Amit Patel and Vitaly Shmatikov},
+year = {1999},
+title = {A Core Calculus of Classes and Mixins},
+journal = {ECOOP},
+pages = {43--66},
+}

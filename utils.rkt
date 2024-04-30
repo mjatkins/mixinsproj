@@ -2,7 +2,9 @@
 (provide lookup-method class-address class-rectangle extend-env extend-env* test-prog-1 test-prog-2 test-prog-3 test-prog-4
          test-prog-5 test-prog-6 test-prog-7 test-prog-8 test-prog-9 test-prog-10 test-prog-11 test-prog-12 test-prog-13 test-prog-14 test-prog-15 test-prog-16 test-prog-17 test-prog-18 test-prog-19 test-prog-20 test-prog-21 test-prog-22 test-prog-23 test-prog-24 test-prog-25 test-prog-26 test-prog-27 test-prog-28 test-prog-29
          get-class add-class! get-mixin add-mixin! binary-primitives unary-primitives mixin? class?
-         empty-global-table get-mixin-fields get-mixin-methods global-table-classes get-mixins-from-class get-mixin-fields/types occurs? )
+         empty-global-table get-mixin-fields get-mixin-methods global-table-classes get-mixins-from-class get-mixin-fields/types occurs? occurs/type? )
+
+(require racket/trace)
 
 
 ;;shared functions
@@ -18,7 +20,8 @@
 
 (define unary-primitives
   (hash 'print print
-        'zero? zero?))
+        'zero? zero?
+        'String->N string->number))
 
 (define get-class
   (λ  (table c-name)
@@ -73,16 +76,20 @@
 
 
 (define get-mixin-fields
-    (λ (ms-list table)
+  (λ (ms-list table m-name)
     (match ms-list
       (`() null)
-      (`(,m .,r) (append (get-mixin-field-list (get-mixin table m)) (get-mixin-fields r table))))))
+      (`(,m .,r)
+       (when (not (mixin? table m)) (error 'mixin-check "mixin ~a not yet defined in ~a"m m-name))
+       (append (get-mixin-field-list (get-mixin table m) table) (get-mixin-fields r table m-name))))))
 
 (define get-mixin-fields/types
   (λ (ms-list table)
     (match ms-list
       (`() null)
-      (`(,m .,r) (append (get-mixin-field-list/types (get-mixin table m)) (get-mixin-fields/types r table))))))
+      (`(,m .,r) (append (get-mixin-field-list/types (get-mixin table m) table) (get-mixin-fields/types r table))))))
+
+;(trace get-mixin-fields/types)
 
 (define get-mixin-method-body
   (λ (m-def)
@@ -96,14 +103,16 @@
 
 
 (define get-mixin-field-list
-  (λ (m-def)
+  (λ (m-def t)
     (match m-def
-      (`(mixin ,m-name (fields . ,field-list)  (mix . ,r) . ,_) (get-fields field-list)))))
+      (`(mixin ,m-name (fields . ,field-list)  (mix . ,r) . ,_)
+       (append (get-fields field-list) (get-mixin-fields r t m-name))))))
 
 (define get-mixin-field-list/types
-  (λ (m-def)
+  (λ (m-def t)
     (match m-def
-      (`(mixin ,m-name (fields . ,field-list)  (mix . ,r) . ,_) (get-fields/types field-list)))))
+      (`(mixin ,m-name (fields . ,field-list)  (mix . ,r) . ,_)
+       (append (get-fields/types field-list) (get-mixin-fields/types r t))))))
 
 (define get-fields
   (λ (ls)
@@ -144,6 +153,19 @@
       ((empty? ls) #f)
       ((eqv? (car ls) s) #t)
       (else (occurs? s (cdr ls))))))
+
+(define occurs/type?
+  (λ (s ls)
+    (match ls 
+      (`() #f)
+      (`(,a : ,_ . ,d)#:when (eqv? s a) #t)
+      (`(,a : ,_ . ,d) (occurs? s (list/o-types d))))))
+
+(define list/o-types
+  (λ (ls)
+    (match ls
+      (`() null)
+      (`(,a : ,_ . ,d) (cons a (list/o-types d))))))
 
 ;;class-definitions
 
@@ -575,9 +597,6 @@
            ()))
     (+ 1 2)))
 
-;;TODO : add more specific errors in typechecker functions, showing specific reasons why they have been caused, such as in dupe methods and fields
-
-;;TODO: implement versions of all mixin tests from carbon-lang
 
 (define test-prog-27
   `((mixin m1
@@ -603,7 +622,7 @@
                (+ (/ self n) 1))))
     (mixin incremen2able
         (fields n : N)
-      (mix incremen1able )
+      (mix incremen1able)
       ((method (incr self : incremen2able) : N
                (+ (/ self n) 2))))
     (+ 1 2)))
@@ -621,9 +640,9 @@
         (fields f3 : N)
       (mix m1)
       ())
-  (class c1
-    (fields)
-    (mix m2 m3)
-    ())
-  (+ 1 2)))
+      (class c1
+        (fields f4 : N)
+        (mix m2 m3)
+        ())
+      (+ 1 2)))
 

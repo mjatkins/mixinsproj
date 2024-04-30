@@ -1,0 +1,5 @@
+(mixin m1
+       (fields f1 : N)
+       (mix m1)
+       ())
+(+ 5 3)

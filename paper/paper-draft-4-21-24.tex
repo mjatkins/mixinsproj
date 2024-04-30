@@ -1,0 +1,234 @@
+\documentclass{article}
+\usepackage[letterpaper, margin=1in]{geometry}
+\usepackage{lipsum}
+\usepackage{underscore}
+\usepackage{listings}
+\usepackage{fancyvrb}
+\lstset{
+  basicstyle=\ttfamily,
+  mathescape
+}
+
+
+\title{A Sample of Mixins in the mix-et Language}
+\date{April 26th, 2024}
+\author{Max Jenkins}
+
+
+\begin{document}
+\maketitle  
+\section*{Introduction}  
+\par
+There are many different notions of inheritance that have large conceptual differences\cite{taivaalsari1996}. Functionally, the use of mixins creates very simple code re-use, similar to inheritance. mix-et attempts to provide an environment to use mixins not only for their unique code re-use, but as a generalization of other forms of inheritance via mixin composition. 
+\section*{Overvew of mix-et}
+\label{sec:overview}
+
+mix-et is statically typed, purely functional prgramming language which borrows its syntax from Racket. 
+As the name suggests, mix-et's main feature is its object-oriented design(OOD) constructs, which revolve around mixins.
+Due to the focus on Mixins, normal OOD features such as basic single inheritance and interfaces have been done away with.
+Instead, mix-et aims to generalize both these functionalities via mixin composition.
+\newline
+Programs in mix-et are defined as follows:
+\begin{verbatim}
+(mixes*)
+(classes*)
+(p)
+\end{verbatim}
+
+where \verb|mixes*| and \verb|classes*| are 0 or more mixin and class declarations respectively, and \verb|p| is the program body.
+At the time of writing this paper, mix-et supports only four primitive types:
+\begin{itemize} 
+  
+\item Integers (\verb|N|)
+\item Strings (\verb|String|)
+\item Booleans (\verb|B|)
+\item Self (\verb|Self|, used in method definitions)
+ 
+\end{itemize}
+Types for variables must be declared by the user using the syntax \verb|(x : T)|, where \verb|x| is a variable, and \verb|T| is the type of \verb|x|. This must be declared not only in lambdas, but in a method's arguments as well.
+mix-et not only borrows its syntax from Racket, but also borrows many functions from Racket. mix-et uses three functions for its objects:
+\begin{verbatim}
+(new c args*)
+\end{verbatim}
+
+where c is the class name, and args is 0 or more arguments. Similarly, field access ``\verb|/|'' and method calls ``\verb|send|'' are defined as follows:
+\begin{verbatim}
+(/ e f)
+
+(send e g es*)
+\end{verbatim}
+where \verb|e| is an object, \verb|f| and \verb|g| are field and function names respectively, and \verb|es*| is 0 or more arguments for \verb|g|.
+All methods defined in classes have a \verb|self| as a required first argument, with the \verb|Self| type. This argument is implicit, and doesn't need to be supplied by the user.
+\par
+Objects in mix-et respect the functional nature of the language and remain immutable. Something to note thus far is that there are no access modifiers in mix-et, so any field or method can be thought of as public.
+
+\section*{Motivation} %TODO: summary of bracha
+First, an important question: why do we even want to look at a programming language with mixins? To answer this question, we will look at a description of mixins provided in Bracha's \textit{Mixin-Based Inheritance}.
+
+In this paper, Bracha provides three seemingly unconnected systems of inheritance:
+\begin{itemize}
+\item Smalltalk's inheritance, in which child classes are given priority for method use, and can re-define inherited methods at will,
+
+\item Beta's inheritance, in which the parent class's definition of a method must always be used, and child classes may add functionalty, and
+
+\item CLOS's inheritance, which supports multiple inheritance, and forces linearization of inhertied classes.
+
+\end{itemize}
+While these methods of inheritance seem unrelated, Bracha shows that through the use of mixins, we can generalize all three of these cases to just one case: mixin composition. So, by using mixins, we can express many different kinds of inheritance, which is where the use of mixins in mix-et comes in.
+
+\section*{Mixins and Classes}
+To begin looking at the implementation of mixins in mix-et, we need to discuss mixins. In general, mixins can be thought of as a generalization of classes in an inheritance chain.
+Additionally, mixins provide us with a simple way to use multiple inheritance\cite{bracha1990}.
+
+In practice, a mixin appears to be somewhat like a Java interface or abstract class, as it wouldn't make sense to instantiate a mixin. Instead, we will mix them into other mixins or classes. This way, we can gain the benefits of code re-use seen in inheritance, and lends itself well to function and mixin composition. By using mixins, we get the general code re-use and abstraction that inheritance provides, as well as placing more importance on building compositional code. Currently, mix-et doesn't support any override feature, but this can be easily accomplished with a rename or re-define feature\cite{bono1999}.
+
+
+The syntax for classes and mixins are dual to one another in mix-et, reflecting the generalization of classes to mixins. The definitions are as follows:
+\begin{verbatim}
+(class cvar (fields fs*) (mix mixins*) (methods*))
+
+(mixin mvar (fields fs*) (mix mixins*) (methods*))
+\end{verbatim}
+%TODO: mention non-optional text/parts of defs.
+where cvar and mvar are class and mixin names respectively, fs* is 0 or more type-annotated field names, mixins* is the list of 0 or more mixins to be ``mixed in'' to the class, and methods* is 0 or more method definitions. Method definitions are of the form:
+\begin{lstlisting}
+(method (m-name self : T$_{self}$ args*) : T$_{return}$ (body))
+\end{lstlisting}
+
+where m-name is the name of the method, T$_{self}$ is either Self or the class type, args is 0 or more arguments with type annotations, T$_{return}$ is the methods return type, and body is the method's body.
+
+Class and mixin declarations are rigid in their structure: the \verb|fields| keyword must always appear as the tag for the first list in classes and mixins, even if they don't contain any fields. This applies to the next required declaration, \verb|mix| as well. The list of methods is slightly different, as if no methods are declared, the empty list must be put in place of a list of method declarations to declare that the class/mixin has none.
+
+Classes and mixins use different tags in their definitions to ensure that the user is unable to create an instance of a mixin. Mixins are mixed in linear order, and class instantiation takes arguments in this order as well, favoring class arguments, then mixin ones. So, the program:
+\begin{verbatim}
+(mixin mailable
+       (fields zip-code : String)
+       (mix)
+       ((method (mail self : Self name : String to-address : String) : String
+       (++ "Mailed " (++ name  (++ " at " to-address))))))
+(mixin place
+       (fields population : String)
+       (mix)
+       ())
+
+(class Town
+       (fields name : String)
+       (mix mailable place)
+       ())
+(let ((my-town (new Town "foobar-town" "12345" "8")))
+     (String->N (/ my-town population)))
+\end{verbatim}
+
+will instantiate a new object of Town class with name = ``foobar town'', zip-code = ``12345'', and population = ``8''. This program will of course return the number 8. Additionally, this example shows a very simple example of mixin composition used as a generalization of inheritance.
+
+\section*{Typechecking}
+Due to the nature of mixins and the ability to have multiple mixes, there are many possible errors that can arise to make programs that utilize mixins not behave as expected. Thus, a robust type-checker is necessary to weed out nonsensical programs.
+
+Several test cases have been carefully selected to highlight programs that the typechecker is meant to reject. One such example is as follows:
+\begin{verbatim}
+(mixin m1
+       (fields f1 : N f2 : N)
+       (mix)
+       ((method (m1 self : m1 N : N a1 : N a1 : N) : N
+	 (+ 1 2))))
+\end{verbatim}
+This mixin definition shouldn't be allowed, as it has two  arguments \verb|a1| in \verb|m1|. So, the typechecker will reject it and print this error: \verb|duplicate-argument: argument a1 has been previously defined in m1|.
+
+On a similar note, the program:
+\begin{verbatim}
+(mixin m1
+       (fields f1 : N f2 : N)
+       (mix)
+       ((method (m1 self : Self) : N
+	 (+ 1 2))))
+(class c1
+(fields f1 : B)
+(mix m1)
+())
+(+ 5 3)
+\end{verbatim}
+
+will also be stopped by the typechecker, as the user attempts to mix \verb|m1| into \verb|c1|, but both contain a field named \verb|f1|. So, the typechecker gives the error message \verb|duplicate-fields-check: duplicate field f1 in c1|.
+Now, for some more interesting examples. The program:
+\begin{verbatim}
+(mixin m1
+       (fields f1 : N)
+       (mix m1)
+       ())
+(+ 5 3)
+\end{verbatim}
+
+shouldn't make it through the typechecker, as it recursively tries to mix itself. This example highlights a very particular error raised by the typechecker: \verb|mixin-check: m1 cannot mix itself|. Without checking for this case, mix-et will try to mix \verb|m1| forever, thus it throws an error.
+What would happen if we try to make a mutual mix, i.e. a circular one?
+\begin{verbatim}
+(mixin m1
+	 (fields f1 : N)
+	 (mix m3)
+	 ())
+(mixin m2
+	 (fields f2 : N)
+	 (mix m1)
+	 ())
+(mixin m3
+	 (fields)
+	 (mix m2)
+	 ())
+	 (class c1
+	 (mix m2)
+	 (fields)
+	 ())
+\end{verbatim}
+The so-called ``circular mixing''(seen in figure \ref{circle-mix}) test is an obvious problem. This chain of mixins violates our rule that mixins and classes can only mix previously defined mixins. Thus, we get the error:  \verb|mixin-check: mixin m3 not yet defined in m1|.
+\begin{figure}[h]
+  \centering
+  \begin{BVerbatim}
+    m1
+   /  ^
+  v    \
+  m2-->m3
+  \end{BVerbatim}
+  \caption{Circular Mixing Example}
+  \label{circle-mix}
+\end{figure}
+
+Consider this program as well:
+\begin{verbatim}
+(mixin m1
+        (fields f1 : N)
+      (mix)
+      ())
+(mixin m2
+        (fields f2 : N)
+      (mix m1)
+      ())
+(mixin m3
+        (fields f3 : N)
+      (mix m1)
+      ())
+(class c1
+        (fields f4 : N)
+        (mix m2 m3)
+        ())
+      (+ 1 2)
+\end{verbatim}
+This ``diamond mixing'' (illustrated in figure \ref{diamond-mix} test is in a similar vein to the previous test, but it attempts to mix \verb|m2| and \verb|m3| into \verb|c1|. The problem shows up when we examine the mixes of \verb|m2| and \verb|m3|: they both mix \verb|m1|, so \verb|m1| would be mixed twice in \verb|c1|. Due to the structure of our classes and mixins, the typechecker will first discover the problem when checking the fields that c1 is receiving from its mixins. Therefore, we get the error message: \verb|duplicate-fields-check: duplicate field f1 in c1|.
+\begin{figure}[!]
+  \centering
+  \begin{BVerbatim}
+    m1
+   /  \
+  v    v
+ m2    m3
+  \    /
+   v  v
+    c1
+  \end{BVerbatim}
+  \caption{Diamond Mixing Example}
+  \label{diamond-mix}
+\end{figure}
+\section*{Conclusion}
+mix-et provides an OOD framework that highlights the use of mixins as the only form of inheritance. This provides the user with ample opportunity for code re-use as well as a thorough typechecker to provide the user with feedback on many common problems that can arise when using mixins. With these tools, mixins can be studied in depth as a proper inheritance system without the bloat of other object-oriented features.
+\bibliography{refs}{}
+\bibliographystyle{IEEEtran}  
+\end{document} 
+

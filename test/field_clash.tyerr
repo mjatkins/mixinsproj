@@ -1,0 +1,10 @@
+(mixin m1
+       (fields f1 : N f2 : N)
+       (mix)
+       ((method (m1 self : Self) : N
+	 (+ 1 2))))
+(class c1
+(fields f1 : B)
+(mix m1)
+())
+(+ 5 3)

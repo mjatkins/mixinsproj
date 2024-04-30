@@ -1,0 +1,5 @@
+(mixin arith
+       (fields x : N y : N)
+       (mix)
+       ())
+8

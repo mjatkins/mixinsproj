@@ -1,0 +1,17 @@
+(mixin m1
+        (fields f1 : N)
+      (mix)
+      ())
+    (mixin m2
+        (fields f2 : N)
+      (mix m1)
+      ())
+    (mixin m3
+        (fields f3 : N)
+      (mix m1)
+      ())
+      (class c1
+        (fields f4 : N)
+        (mix m2 m3)
+        ())
+      (+ 1 2))

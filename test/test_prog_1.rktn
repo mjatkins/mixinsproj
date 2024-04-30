@@ -5,5 +5,5 @@
                 (/ self sound1))
         (method (bark2 self : Dog) : N
                 (/ self sound2))))
-    (let ((boston-terrier (new Dog 1 22)))
+    (let ((boston-terrier (new Dog 1 8)))
       (send boston-terrier bark2))

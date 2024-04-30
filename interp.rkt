@@ -2,7 +2,7 @@
 (require rackunit)
 (require "utils.rkt")
 (require racket/trace)
-(provide value-of-prog empty-global-table)
+(provide value-of-prog value-of-exp empty-global-table) ;;provide for tests
 
 
 
@@ -97,20 +97,9 @@
 
 
 
-    ;basic interpreter tests
-(check-eqv? (value-of-exp '(+ 1 2) empty-env '()) 3)
-(check-eqv? (value-of-exp `((λ (x : N) x) 2) empty-env '()) 2)
-(check-eqv? (value-of-exp `((λ (x : B) (if (zero? x) #t #f)) 0) empty-env '()) #t)
-(check-eqv? (value-of-exp `(let ((x 6)
-                                  (y 7)
-                                  (z 12))
-                              (+ (+ x y) z)) empty-env (empty-global-table)) 25)
-;;misc. tests
-(check-eqv? (value-of-exp `(if #t 1 2) empty-env (empty-global-table)) 1)
-(check-eqv? (value-of-exp `((λ (x : N y : N) (+ x y)) 2 3) empty-env '()) 5)
-(check-eqv? (value-of-exp `((λ (a : N b : N c : N d : N) (+ b (+ a (+ c d))) ) 2 3 4 5) empty-env '()) 14)
 
 
+;basic interpreter tests
 
 (check-eqv? (value-of-prog test-prog-1 (empty-global-table)) 22)
 (check-eqv? (value-of-prog test-prog-2 (empty-global-table)) 25)
