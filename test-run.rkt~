@@ -1,6 +1,0 @@
-#lang racket
-(require "typechecker.rkt")
-(require "interp.rkt")
-
-(let ([contents (load "~/Documents/mixinsproj/test/test_prog_2.rkt")])
-  (prog-check contents))

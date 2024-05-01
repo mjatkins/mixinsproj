@@ -1,10 +1,10 @@
 (mixin mailable
-       (fields zip-code : N)
+       (fields zip-code : String)
        (mix)
        ((method (mail self : Self name : String to-address : String) : String
        (++ "Mailed " (++ name  (++ " at " to-address))))))
 (mixin place
-       (fields population : N)
+       (fields population : String)
        (mix)
        ())
 
@@ -12,5 +12,5 @@
        (fields name : String)
        (mix mailable place)
        ())
-(let ((my-town (new Town "foobar-town" 12345 8)))
-     (/ my-town population))
+(let ((my-town (new Town "hello world" "12345" "8")))
+     (/ my-town name))
